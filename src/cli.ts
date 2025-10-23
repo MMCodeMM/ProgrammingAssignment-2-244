@@ -1,8 +1,12 @@
 import { main } from './processor'
 
-try {
-  main(process.argv)
-} catch (error) {
-  console.error(error)
-  process.exit(1)
+async function runCLI() {
+  try {
+    await main(process.argv)
+  } catch (error) {
+    console.error(error)
+    process.exit(1)
+  }
 }
+
+runCLI()
