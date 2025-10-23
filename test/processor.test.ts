@@ -414,11 +414,233 @@ describe('Processor', () => {
   // ===== 加分項目 =====
 
   describe('批次處理能力（+10 分）', () => {
-    it('支援處理多筆聚餐分帳資料')
-    it('支援輸入目錄')
-    it('支援輸出目錄')
-    it('自動掃描目錄中的所有 JSON 檔案')
-    it('跳過非 JSON 檔案')
+    it('支援處理多筆聚餐分帳資料', async () => {
+      const testArgs = [
+        'ts-node',
+        'src/cli.ts',
+        '--input=sample-data/input-dir',
+        '--output=test-batch-output'
+      ]
+      
+      // 清理舊的輸出目錄
+      if (fs.existsSync('test-batch-output')) {
+        fs.rmSync('test-batch-output', { recursive: true, force: true })
+      }
+      
+      try {
+        await main(testArgs)
+        
+        // 驗證輸出目錄被創建
+        expect(fs.existsSync('test-batch-output')).to.be.true
+        
+        // 驗證所有 JSON 檔案都被處理
+        const outputFiles = fs.readdirSync('test-batch-output')
+        expect(outputFiles).to.include('bill-1.json')
+        expect(outputFiles).to.include('bill-2.json')
+        expect(outputFiles).to.include('bill-3.json')
+        
+        // 驗證輸出內容正確
+        const bill1Output = JSON.parse(fs.readFileSync(path.join('test-batch-output', 'bill-1.json'), 'utf-8'))
+        expect(bill1Output).to.have.property('date', '2024年3月21日')
+        expect(bill1Output).to.have.property('location', '開心小館')
+        expect(bill1Output).to.have.property('totalAmount')
+        expect(bill1Output).to.have.property('items')
+        expect(bill1Output.items).to.be.an('array')
+      } finally {
+        // 清理測試檔案
+        if (fs.existsSync('test-batch-output')) {
+          fs.rmSync('test-batch-output', { recursive: true, force: true })
+        }
+      }
+    })
+    
+    it('支援輸入目錄', async () => {
+      const testArgs = [
+        'ts-node',
+        'src/cli.ts',
+        '--input=sample-data/input-dir',
+        '--output=test-input-dir-output'
+      ]
+      
+      if (fs.existsSync('test-input-dir-output')) {
+        fs.rmSync('test-input-dir-output', { recursive: true, force: true })
+      }
+      
+      try {
+        await main(testArgs)
+        
+        // 驗證輸入目錄被正確處理
+        expect(fs.existsSync('test-input-dir-output')).to.be.true
+        
+        const inputFiles = fs.readdirSync('sample-data/input-dir').filter(f => f.endsWith('.json'))
+        const outputFiles = fs.readdirSync('test-input-dir-output')
+        
+        // 每個輸入 JSON 檔案都應該有對應的輸出檔案
+        for (const inputFile of inputFiles) {
+          expect(outputFiles).to.include(inputFile)
+        }
+      } finally {
+        if (fs.existsSync('test-input-dir-output')) {
+          fs.rmSync('test-input-dir-output', { recursive: true, force: true })
+        }
+      }
+    })
+    
+    it('支援輸出目錄', async () => {
+      const outputDir = 'test-custom-output-dir'
+      const testArgs = [
+        'ts-node',
+        'src/cli.ts',
+        '--input=sample-data/input-dir',
+        `--output=${outputDir}`
+      ]
+      
+      if (fs.existsSync(outputDir)) {
+        fs.rmSync(outputDir, { recursive: true, force: true })
+      }
+      
+      try {
+        await main(testArgs)
+        
+        // 驗證自定義輸出目錄被創建
+        expect(fs.existsSync(outputDir)).to.be.true
+        
+        // 驗證目錄結構正確
+        const stat = fs.statSync(outputDir)
+        expect(stat.isDirectory()).to.be.true
+        
+        // 驗證檔案被正確寫入到輸出目錄
+        const outputFiles = fs.readdirSync(outputDir)
+        expect(outputFiles.length).to.be.greaterThan(0)
+      } finally {
+        if (fs.existsSync(outputDir)) {
+          fs.rmSync(outputDir, { recursive: true, force: true })
+        }
+      }
+    })
+    
+    it('自動掃描目錄中的所有 JSON 檔案', async () => {
+      // 創建測試目錄，包含 JSON 和非 JSON 檔案
+      const testInputDir = 'test-scan-input'
+      const testOutputDir = 'test-scan-output'
+      
+      // 清理並創建測試目錄
+      if (fs.existsSync(testInputDir)) {
+        fs.rmSync(testInputDir, { recursive: true, force: true })
+      }
+      if (fs.existsSync(testOutputDir)) {
+        fs.rmSync(testOutputDir, { recursive: true, force: true })
+      }
+      
+      fs.mkdirSync(testInputDir, { recursive: true })
+      
+      // 創建測試檔案
+      const testBill = {
+        date: "2024-03-21",
+        location: "測試餐廳",
+        tipPercentage: 10,
+        items: [
+          { name: "測試餐點", price: 100, isShared: true },
+          { name: "飲料", price: 30, isShared: false, person: "Alice" }
+        ]
+      }
+      
+      fs.writeFileSync(path.join(testInputDir, 'test1.json'), JSON.stringify(testBill, null, 2))
+      fs.writeFileSync(path.join(testInputDir, 'test2.json'), JSON.stringify(testBill, null, 2))
+      fs.writeFileSync(path.join(testInputDir, 'not-json.txt'), 'this is not json')
+      fs.writeFileSync(path.join(testInputDir, 'readme.md'), '# README')
+      
+      const testArgs = [
+        'ts-node',
+        'src/cli.ts',
+        `--input=${testInputDir}`,
+        `--output=${testOutputDir}`
+      ]
+      
+      try {
+        await main(testArgs)
+        
+        // 驗證只有 JSON 檔案被處理
+        const outputFiles = fs.readdirSync(testOutputDir)
+        expect(outputFiles).to.include('test1.json')
+        expect(outputFiles).to.include('test2.json')
+        expect(outputFiles).to.not.include('not-json.txt')
+        expect(outputFiles).to.not.include('readme.md')
+        expect(outputFiles.length).to.equal(2)
+      } finally {
+        // 清理測試檔案
+        if (fs.existsSync(testInputDir)) {
+          fs.rmSync(testInputDir, { recursive: true, force: true })
+        }
+        if (fs.existsSync(testOutputDir)) {
+          fs.rmSync(testOutputDir, { recursive: true, force: true })
+        }
+      }
+    })
+    
+    it('跳過非 JSON 檔案', async () => {
+      // 創建包含各種檔案類型的測試目錄
+      const testInputDir = 'test-skip-input'
+      const testOutputDir = 'test-skip-output'
+      
+      if (fs.existsSync(testInputDir)) {
+        fs.rmSync(testInputDir, { recursive: true, force: true })
+      }
+      if (fs.existsSync(testOutputDir)) {
+        fs.rmSync(testOutputDir, { recursive: true, force: true })
+      }
+      
+      fs.mkdirSync(testInputDir, { recursive: true })
+      
+      // 創建測試檔案
+      const validBill = {
+        date: "2024-03-21",
+        location: "測試餐廳",
+        tipPercentage: 10,
+        items: [
+          { name: "測試餐點", price: 100, isShared: true },
+          { name: "飲料", price: 30, isShared: false, person: "Alice" }
+        ]
+      }
+      
+      // JSON 檔案
+      fs.writeFileSync(path.join(testInputDir, 'valid.json'), JSON.stringify(validBill, null, 2))
+      
+      // 非 JSON 檔案
+      fs.writeFileSync(path.join(testInputDir, 'data.txt'), 'text file')
+      fs.writeFileSync(path.join(testInputDir, 'config.xml'), '<config></config>')
+      fs.writeFileSync(path.join(testInputDir, 'script.js'), 'console.log("hello");')
+      fs.writeFileSync(path.join(testInputDir, 'style.css'), 'body { margin: 0; }')
+      fs.writeFileSync(path.join(testInputDir, 'document.pdf'), 'fake pdf content')
+      
+      const testArgs = [
+        'ts-node',
+        'src/cli.ts',
+        `--input=${testInputDir}`,
+        `--output=${testOutputDir}`
+      ]
+      
+      try {
+        await main(testArgs)
+        
+        // 驗證只處理了 JSON 檔案
+        expect(fs.existsSync(testOutputDir)).to.be.true
+        const outputFiles = fs.readdirSync(testOutputDir)
+        expect(outputFiles).to.deep.equal(['valid.json'])
+        
+        // 驗證處理結果正確
+        const outputContent = JSON.parse(fs.readFileSync(path.join(testOutputDir, 'valid.json'), 'utf-8'))
+        expect(outputContent).to.have.property('date', '2024年3月21日')
+        expect(outputContent).to.have.property('location', '測試餐廳')
+      } finally {
+        if (fs.existsSync(testInputDir)) {
+          fs.rmSync(testInputDir, { recursive: true, force: true })
+        }
+        if (fs.existsSync(testOutputDir)) {
+          fs.rmSync(testOutputDir, { recursive: true, force: true })
+        }
+      }
+    })
   })
 
   describe('非同步檔案處理（+5 分）', () => {

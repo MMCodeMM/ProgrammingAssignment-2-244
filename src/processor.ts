@@ -105,13 +105,27 @@ async function processBatchFiles(inputDir: string, outputDir: string): Promise<v
     // 讀取輸入目錄中的所有檔案
     const files = await fsPromises.readdir(inputDir)
     
-    // 過濾出 JSON 檔案
+    // 過濾出 JSON 檔案和統計信息
     const jsonFiles = files.filter(file => file.endsWith('.json'))
+    const nonJsonFiles = files.filter(file => !file.endsWith('.json'))
+    
+    console.log(`掃描目錄 ${inputDir}:`)
+    console.log(`  - 找到 ${files.length} 個檔案`)
+    console.log(`  - JSON 檔案: ${jsonFiles.length} 個`)
+    if (nonJsonFiles.length > 0) {
+      console.log(`  - 跳過非 JSON 檔案: ${nonJsonFiles.length} 個 (${nonJsonFiles.join(', ')})`)
+    }
     
     if (jsonFiles.length === 0) {
       console.log(`在目錄 ${inputDir} 中未找到 JSON 檔案`)
       return
     }
+    
+    // 處理統計信息
+    let successCount = 0
+    let errorCount = 0
+    const processedFiles: string[] = []
+    const errorFiles: string[] = []
     
     // 處理每個 JSON 檔案
     for (const file of jsonFiles) {
@@ -120,13 +134,27 @@ async function processBatchFiles(inputDir: string, outputDir: string): Promise<v
       
       try {
         await processSingleFile(inputPath, outputPath)
+        successCount++
+        processedFiles.push(file)
       } catch (error) {
-        console.error(`處理檔案 ${file} 時發生錯誤:`, error)
+        errorCount++
+        errorFiles.push(file)
+        handleError(error, `處理檔案 ${file}`)
         // 繼續處理其他檔案，不拋出錯誤
       }
     }
     
-    console.log(`批次處理完成，處理了 ${jsonFiles.length} 個檔案`)
+    // 輸出統計報告
+    console.log('\n批次處理完成:')
+    console.log(`  - 成功處理: ${successCount} 個檔案`)
+    if (successCount > 0) {
+      console.log(`    ${processedFiles.join(', ')}`)
+    }
+    if (errorCount > 0) {
+      console.log(`  - 處理失敗: ${errorCount} 個檔案`)
+      console.log(`    ${errorFiles.join(', ')}`)
+    }
+    console.log(`  - 總處理時間: ${new Date().toLocaleTimeString()}`)
   } catch (error) {
     handleError(error, `批次處理目錄 ${inputDir}`)
     throw error
