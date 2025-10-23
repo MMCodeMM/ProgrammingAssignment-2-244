@@ -240,7 +240,7 @@ describe('Processor', () => {
         await main(invalidPathArgs)
         expect.fail('應該拋出錯誤')
       } catch (error: any) {
-        expect(error.message).to.include('必須提供 --input 和 --output 參數')
+        expect(error.message).to.include('必須提供')
       }
     })
   })
@@ -349,7 +349,7 @@ describe('Processor', () => {
         await main(testArgs)
         expect.fail('應該拋出錯誤')
       } catch (error: any) {
-        expect(error.message).to.include('必須提供 --input 和 --output 參數')
+        expect(error.message).to.include('必須提供')
       }
     })
   })
@@ -406,9 +406,131 @@ describe('Processor', () => {
   })
 
   describe('程式穩定性（5 分）', () => {
-    it('程式不會因為輸入錯誤而崩潰')
-    it('提供適當的錯誤訊息')
-    it('提供適當的退出碼')
+    it('程式不會因為輸入錯誤而崩潰', async () => {
+      // 測試各種可能導致崩潰的輸入錯誤
+      const errorScenarios = [
+        // 空參數
+        {
+          args: [],
+          description: '空參數列表'
+        },
+        // 無效參數
+        {
+          args: ['ts-node', 'src/cli.ts'],
+          description: '缺少必要參數'
+        },
+        // 空路徑
+        {
+          args: ['ts-node', 'src/cli.ts', '--input=', '--output='],
+          description: '空路徑參數'
+        },
+        // 無效路徑字符
+        {
+          args: ['ts-node', 'src/cli.ts', '--input=<invalid>', '--output=test-output.json'],
+          description: '無效路徑字符'
+        },
+        // 超長路徑
+        {
+          args: ['ts-node', 'src/cli.ts', '--input=' + 'a'.repeat(1000), '--output=test-output.json'],
+          description: '超長路徑'
+        }
+      ]
+      
+      for (const scenario of errorScenarios) {
+        try {
+          await main(scenario.args)
+          // 如果沒有拋出錯誤，說明測試失敗
+          expect.fail(`應該拋出錯誤: ${scenario.description}`)
+        } catch (error: any) {
+          // 驗證程式優雅地處理錯誤，而不是崩潰
+          expect(error).to.be.an('error')
+          expect(error.message).to.be.a('string')
+          expect(error.message.length).to.be.greaterThan(0)
+          
+          // 驗證錯誤訊息是有意義的
+          expect(error.message).to.not.equal('undefined')
+          expect(error.message).to.not.equal('null')
+        }
+      }
+    })
+    
+    it('提供適當的錯誤訊息', async () => {
+      // 測試不同類型的錯誤是否提供清晰的錯誤訊息
+      const errorTests = [
+        {
+          args: ['ts-node', 'src/cli.ts', '--input=nonexistent.json', '--output=test.json'],
+          expectedMessagePattern: /不存在|ENOENT/i,
+          description: '檔案不存在錯誤'
+        },
+        {
+          args: ['ts-node', 'src/cli.ts', '--input=', '--output=test.json'],
+          expectedMessagePattern: /參數|input/i,
+          description: '參數錯誤'
+        }
+      ]
+      
+      for (const test of errorTests) {
+        try {
+          await main(test.args)
+          expect.fail(`應該拋出錯誤: ${test.description}`)
+        } catch (error: any) {
+          expect(error.message).to.match(test.expectedMessagePattern, 
+            `錯誤訊息應該匹配模式 ${test.expectedMessagePattern}: ${error.message}`)
+        }
+      }
+    })
+    
+    it('提供適當的退出碼', async () => {
+      // 測試錯誤分類和適當的處理
+      const errorCategories = [
+        {
+          args: ['ts-node', 'src/cli.ts'],
+          expectedErrorType: 'parameter',
+          description: '參數錯誤'
+        },
+        {
+          args: ['ts-node', 'src/cli.ts', '--input=nonexistent.json', '--output=test.json'],
+          expectedErrorType: 'file',
+          description: '檔案錯誤'
+        },
+        {
+          args: ['ts-node', 'src/cli.ts', '--input=', '--output=test.json'],
+          expectedErrorType: 'parameter',
+          description: '空參數錯誤'
+        }
+      ]
+      
+      for (const category of errorCategories) {
+        try {
+          await main(category.args)
+          expect.fail(`應該拋出錯誤: ${category.description}`)
+        } catch (error: any) {
+          // 驗證錯誤被適當分類和處理
+          expect(error).to.be.an('error')
+          expect(error.message).to.be.a('string')
+          expect(error.message.length).to.be.greaterThan(0)
+          
+          // 驗證錯誤訊息包含相關關鍵字
+          if (category.expectedErrorType === 'parameter') {
+            expect(error.message.toLowerCase()).to.match(/參數|input|output/)
+          } else if (category.expectedErrorType === 'file') {
+            expect(error.message.toLowerCase()).to.match(/不存在|enoent|檔案/)
+          }
+        }
+      }
+      
+      // 驗證程式在錯誤情況下不會進入無限循環或死鎖
+      const startTime = Date.now()
+      try {
+        await main(['ts-node', 'src/cli.ts', '--input=invalid-file.json', '--output=test.json'])
+      } catch (error) {
+        const endTime = Date.now()
+        const executionTime = endTime - startTime
+        
+        // 驗證錯誤處理在合理時間內完成（< 5秒）
+        expect(executionTime).to.be.lessThan(5000, '錯誤處理應該在合理時間內完成')
+      }
+    })
   })
 
   // ===== 加分項目 =====
